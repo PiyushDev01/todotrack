@@ -5,9 +5,11 @@ interface StreakCardProps {
   streakCount: number;
   penguinImg: string; // PNG path
   username?: string; // LeetCode username for profile link
+  isStreakAtRisk?: boolean;
+  streakTimeLeft?: string;
 }
 
-const StreakCard: React.FC<StreakCardProps> = ({ streakCount, penguinImg, username }) => {
+const StreakCard: React.FC<StreakCardProps> = ({ streakCount, penguinImg, username, isStreakAtRisk, streakTimeLeft }) => {
   // Open LeetCode profile when penguin is clicked
   const handlePenguinClick = () => {
     if (username) {
@@ -65,14 +67,31 @@ const StreakCard: React.FC<StreakCardProps> = ({ streakCount, penguinImg, userna
   >
     {/* Top Row: Streak Number & Label, Flame */}
     <div className="w-full flex gap-1 flex-row items-start justify-between">
+
+        {streakTimeLeft && (
+          <span className="absolute left-4 top-0 text-[9px] text-gray-400 whitespace-nowrap z-30">
+            {streakTimeLeft} left
+          </span>
+        )}
+
       <div className="flex flex-col items-start gap-[2px]">
-        <span className="text-xl font-bold text-[#ff2d55] leading-none font-sans tracking-tight">
-          {streakCount}
-          
-        </span>
-        <span className="text-white font-light text-xs leading-tight font-sans opacity-90 mt-[2px] tracking-wide drop-shadow-sm whitespace-pre-line">
-          Streak<br />
-        </span>
+          <span
+            className={`text-xl font-bold leading-none font-sans tracking-tight ${
+              isStreakAtRisk ? "text-gray-500" : "text-[#ff2d55]"
+            }`}
+          >
+            {streakCount}
+          </span>
+
+          <span className="text-white font-light text-xs leading-tight font-sans opacity-90 mt-[2px] tracking-wide drop-shadow-sm whitespace-pre-line">
+            Streak
+          </span>
+{/* 
+          {streakTimeLeft && (
+            <span className="text-[9px] text-gray-400 mt-1">
+              {streakTimeLeft} left
+            </span>
+      )} */}
       </div>      
       {/* Flame icon with dynamic styling based on streak */}
       <div className={`mt-[2px] ${streakCount > 0 ? "drop-shadow-[0_0_12px_#ffb300]" : ""}`}>
