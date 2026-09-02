@@ -474,20 +474,33 @@ const isStreakAtRisk = streakInfo.atRisk;
   const visibleButtonCount = [showContest, showStudyPlan, showDaily, showSheet].filter(Boolean).length;
   const shouldShowLabels = visibleButtonCount <= 2;
 
-  const handleDailyProblemClick = async () => {
-    try {
-      const response = await fetch('https://alfa-leetcode-api.onrender.com/daily');
-      const data = await response.json();
-      if (data && data.questionLink) {
-        window.open(data.questionLink, '_blank');
-      } else {
-        alert('Could not fetch daily problem link.');
+const handleDailyProblemClick = async () => {
+  try {
+    const response = await fetch(
+      'https://alfa-leetcode-api.onrender.com/daily'
+    );
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        alert('Daily problem API is temporarily rate limited. Please try again shortly.');
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching daily problem:', err);
-      alert('Failed to fetch daily problem. Please try again later.');
+
+      throw new Error(`HTTP error: ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+
+    if (data?.questionLink) {
+      window.open(data.questionLink, '_blank');
+    } else {
+      alert('Could not fetch daily problem link.');
+    }
+  } catch (err) {
+    console.error('Error fetching daily problem:', err);
+    alert('Failed to fetch daily problem. Please try again later.');
+  }
+};
 
   const handleDsaSheetUrlSave = () => {
     if (dsaSheetUrl.trim()) {

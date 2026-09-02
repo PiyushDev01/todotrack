@@ -86,21 +86,27 @@ const StreakCard: React.FC<StreakCardProps> = ({ streakCount, penguinImg, userna
           <span className="text-white font-light text-xs leading-tight font-sans opacity-90 mt-[2px] tracking-wide drop-shadow-sm whitespace-pre-line">
             Streak
           </span>
-{/* 
-          {streakTimeLeft && (
-            <span className="text-[9px] text-gray-400 mt-1">
-              {streakTimeLeft} left
-            </span>
-      )} */}
+
       </div>      
       {/* Flame icon with dynamic styling based on streak */}
-      <div className={`mt-[2px] ${streakCount > 0 ? "drop-shadow-[0_0_12px_#ffb300]" : ""}`}>
-        <img 
-          src={flame} 
-          className={`w-12 ${streakCount === 0 ? "filter grayscale opacity-50" : ""}`}
-          alt="" 
+      <div
+        className={`mt-[2px] ${
+          streakCount > 0 && !isStreakAtRisk
+            ? "drop-shadow-[0_0_12px_#ffb300]"
+            : ""
+        }`}
+      >
+        <img
+          src={flame}
+          className={`w-12 ${
+            streakCount === 0 || isStreakAtRisk
+              ? "filter grayscale opacity-50"
+              : ""
+          }`}
+          alt=""
         />
       </div>
+
     </div>    {/* Penguin at bottom center - clickable to open LeetCode profile */}    
     <img
       src={penguinImg}
