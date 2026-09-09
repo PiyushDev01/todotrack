@@ -68,11 +68,11 @@ const StreakCard: React.FC<StreakCardProps> = ({ streakCount, penguinImg, userna
     {/* Top Row: Streak Number & Label, Flame */}
     <div className="w-full flex gap-1 flex-row items-start justify-between">
 
-        {streakTimeLeft && (
+        /* {streakTimeLeft && (
           <span className="absolute left-4 top-0 text-[9px] text-gray-400 whitespace-nowrap z-30">
             {streakTimeLeft} left
           </span>
-        )}
+        )} */
 
       <div className="flex flex-col items-start gap-[2px]">
           <span
