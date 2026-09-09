@@ -27,19 +27,9 @@ interface LeetCodeStats {
   submissionCalendar: { [key: string]: number };
 }
 
-interface DailyLeetCodeData {
-  date: string; // YYYY-MM-DD
-  totalSolved: number;
-  isStreakDay: boolean;
-  isFirstEntry?: boolean;
-}
-
 const LEETCODE_USERNAME_KEY = 'leetcodeUsername';
-const LEETCODE_DAILY_DATA_KEY = 'leetcodeDailyData';
 const DSA_SHEET_URL_KEY = 'dsaSheetUrl';
 const LEETCODE_CACHE_PREFIX = 'leetcode_cache_';
-const LEETCODE_FIRST_ENTRY_KEY = 'leetcodeFirstEntry';
-const LEETCODE_BASELINE_SOLVED_KEY = 'leetcodeBaselineSolved';
 const LEETCODE_SHOW_CONTEST_KEY = 'leetcodeShowContest';
 const LEETCODE_SHOW_STUDY_PLAN_KEY = 'leetcodeShowStudyPlan';
 const LEETCODE_SHOW_DAILY_KEY = 'leetcodeShowDaily';
@@ -61,11 +51,11 @@ const LeetCodeWidget: React.FC = () => {
   const [stats, setStats] = useState<LeetCodeStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [dailyData, setDailyData] = useState<DailyLeetCodeData[]>([]);
   const [dsaSheetUrl, setDsaSheetUrl] = useState<string>('');
   const [showDsaSheetInput, setShowDsaSheetInput] = useState<boolean>(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
   const [currentPenguinImage, setCurrentPenguinImage] = useState<string>(neutralPenguin);
+  const [streakTimeLeft, setStreakTimeLeft] = useState('');
   const [showContest, setShowContest] = useState(() => 
     localStorage.getItem(LEETCODE_SHOW_CONTEST_KEY) === 'true');
   const [showStudyPlan, setShowStudyPlan] = useState(() => 
@@ -172,57 +162,6 @@ const LeetCodeWidget: React.FC = () => {
           console.log('Stats set successfully. Total Solved:', profile.totalSolved);
           setShowInput(false);
 
-          const today = new Date();
-          const effectiveToday = getEffectiveDate(today);
-          const todayStr = format(effectiveToday, 'yyyy-MM-dd');
-          setDailyData(prevData => {
-            const updatedData = prevData.filter(d => d.date !== todayStr); 
-
-            const yesterdayStr = format(addDays(effectiveToday, -1), 'yyyy-MM-dd');
-            const yesterdayData = prevData.find(d => d.date === yesterdayStr);
-
-            let isStreakDay = false;
-
-            // Find existing entry for today
-            const existingTodayData = prevData.find(d => d.date === todayStr);
-            
-            if (existingTodayData) {
-              // If we already have data for today, check if totalSolved has increased
-              if (profile.totalSolved > existingTodayData.totalSolved) {
-                isStreakDay = true;
-              } else {
-                // Keep existing streak status
-                isStreakDay = existingTodayData.isStreakDay;
-              }
-            } else if (yesterdayData) {
-              // For a new day, check if totalSolved has increased from yesterday
-              if (profile.totalSolved > yesterdayData.totalSolved) {
-                isStreakDay = true;
-              }
-            } else {
-              // First entry - check if there's any increase from baseline
-              const baselineSolved = localStorage.getItem(LEETCODE_BASELINE_SOLVED_KEY);
-              if (baselineSolved) {
-                const baseline = parseInt(baselineSolved);
-                if (profile.totalSolved > baseline) {
-                  isStreakDay = true;
-                }
-              } else {
-                // Set baseline for first entry
-                localStorage.setItem(LEETCODE_BASELINE_SOLVED_KEY, profile.totalSolved.toString());
-              }
-            }
-            
-            updatedData.push({
-              date: todayStr,
-              totalSolved: profile.totalSolved,
-              isStreakDay: isStreakDay
-            });
-
-            const thirtyDaysAgo = format(addDays(effectiveToday, -30), 'yyyy-MM-dd');
-            return updatedData.filter(d => parseISO(d.date) >= parseISO(thirtyDaysAgo));
-          });
-
           break; 
 
         } catch (err) {
@@ -289,16 +228,6 @@ const LeetCodeWidget: React.FC = () => {
       console.log('useEffect: No saved username found. Showing input form.');
     }
 
-    const savedDailyData = localStorage.getItem(LEETCODE_DAILY_DATA_KEY);
-    if (savedDailyData) {
-      try {
-        setDailyData(JSON.parse(savedDailyData));
-        console.log('useEffect: Loaded daily data from localStorage.');
-      } catch (e) {
-        console.error('Error parsing daily LeetCode data from localStorage', e);
-      }
-    }
-
     const savedDsaSheetUrl = localStorage.getItem(DSA_SHEET_URL_KEY);
     if (savedDsaSheetUrl) {
       setDsaSheetUrl(savedDsaSheetUrl);
@@ -317,16 +246,12 @@ const LeetCodeWidget: React.FC = () => {
     setShowSheet(savedShowSheet !== 'false'); // Default to true if not set
   }, [fetchLeetCodeStats]);
 
-  useEffect(() => {
-    localStorage.setItem(LEETCODE_DAILY_DATA_KEY, JSON.stringify(dailyData));
-  }, [dailyData]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (leetcodeUsername && !showInput) {
       // Re-evaluate isFirstEntry on each interval tick to dynamically adjust polling frequency
-      const currentIsFirstEntry = localStorage.getItem(LEETCODE_FIRST_ENTRY_KEY) === 'true';
-      const intervalTime = currentIsFirstEntry ? 15 * 1000 : 60 * 1000;
+      const intervalTime = 60 * 1000;
       
       interval = setInterval(() => {
         console.log('Periodic fetch initiated.');
@@ -337,151 +262,245 @@ const LeetCodeWidget: React.FC = () => {
   }, [leetcodeUsername, showInput, fetchLeetCodeStats]);
 
   useEffect(() => {
-    const updatePenguinMood = () => {
-      const currentHour = new Date().getHours();
-      const today = new Date();
-      const effectiveToday = getEffectiveDate(today);
-      const todayStr = format(effectiveToday, 'yyyy-MM-dd');
-      const todayData = dailyData.find(d => d.date === todayStr);
+  const updatePenguinMood = () => {
+    const currentHour = new Date().getHours();
 
-      let moodImage: string;
-
-      if (todayData?.isStreakDay && stats) {
-        const todaySolvedCountFromAPI = stats.submissionCalendar[todayStr] || 0;
-
-        if (todaySolvedCountFromAPI > 1) {
-          moodImage = PENGUIN_IMAGES.love;
-        } else if (currentHour >= 5 && currentHour < 20) {
-          moodImage = PENGUIN_IMAGES.chilling;
-        } else {
-          moodImage = PENGUIN_IMAGES.sleepingWithStreak;
-        }
-      } else {
-        // Time-based Mood Timeline Logic (without streak)
-        if (currentHour >= 5 && currentHour < 8) { // Neutral from 5 AM to 8 AM
-          moodImage = PENGUIN_IMAGES.neutral;
-        } else if (currentHour >= 8 && currentHour < 12) {
-          moodImage = PENGUIN_IMAGES.sad;
-        } else if (currentHour >= 12 && currentHour < 16) {
-          moodImage = PENGUIN_IMAGES.cry;
-        } else if (currentHour >= 16 && currentHour < 20) {
-          moodImage = PENGUIN_IMAGES.angry;
-        } else { // This else will cover 20:00 - 23:59 and 00:00 - 04:59 (next day)
-          moodImage = PENGUIN_IMAGES['more angry'];
-        }
-      }
-      setCurrentPenguinImage(moodImage);
-    };
-
-    updatePenguinMood();
-
-    const intervalId = setInterval(updatePenguinMood, 60 * 1000);
-    return () => clearInterval(intervalId);
-  }, [dailyData, stats, PENGUIN_IMAGES]);
-
-  const handleSaveUsername = () => {
-    console.log(`handleSaveUsername: Attempting to save username: ${leetcodeUsername.trim()}`);
-    if (leetcodeUsername.trim()) {
-      const previousUsername = localStorage.getItem(LEETCODE_USERNAME_KEY);
-      const newUsername = leetcodeUsername.trim();
-      
-      // Check if the username is changing
-      if (previousUsername !== newUsername) {
-        console.log('Username changed, resetting baseline data');
-        // Reset baseline and first entry flag when changing users
-        localStorage.removeItem(LEETCODE_BASELINE_SOLVED_KEY);
-        localStorage.removeItem(LEETCODE_FIRST_ENTRY_KEY);
-        // Clear daily data when switching users to avoid streak contamination
-        setDailyData([]);
-      }
-      
-      localStorage.setItem(LEETCODE_USERNAME_KEY, newUsername);
-      
-      // Check if this is a first-time entry
-      const isFirstEntry = !localStorage.getItem(LEETCODE_FIRST_ENTRY_KEY);
-      if (isFirstEntry) {
-        localStorage.setItem(LEETCODE_FIRST_ENTRY_KEY, 'true');
-        // We'll set the baseline after the first successful fetch
-      }
-      
-      fetchLeetCodeStats(newUsername, false); // Initial fetch on save, show loading
-      console.log('handleSaveUsername: Username saved and fetch initiated.');
-    } else {
-      setError('Username cannot be empty.');
-      setShowInput(true);
-      console.log('handleSaveUsername: Username is empty.');
-    }
-  };
-
-  const calculateStreak = useCallback(() => {
-    if (dailyData.length === 0) return 0;
     const today = new Date();
     const effectiveToday = getEffectiveDate(today);
-    // Sort dailyData by date ascending
-    const sortedDailyData = [...dailyData].sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
-    let streak = 0;
-    let currentDate = effectiveToday;
-    while (true) {
-      const dateStr = format(currentDate, 'yyyy-MM-dd');
-      const entry = sortedDailyData.find(d => d.date === dateStr);
-      if (entry && entry.isStreakDay) {
-        streak++;
-        currentDate = addDays(currentDate, -1);
+    const todayStr = format(effectiveToday, 'yyyy-MM-dd');
+
+    // Check today's submissions directly from LeetCode API data
+    const todaySolvedCountFromAPI = stats?.submissionCalendar
+      ? Object.entries(stats.submissionCalendar)
+          .filter(([timestamp]) =>
+            format(new Date(Number(timestamp) * 1000), 'yyyy-MM-dd') === todayStr
+          )
+          .reduce((total, [, count]) => total + count, 0)
+      : 0;
+
+    let moodImage: string;
+
+    // If user has submitted anything today
+    if (todaySolvedCountFromAPI > 0 && stats) {
+
+      // More than one submission → Love penguin
+      if (todaySolvedCountFromAPI > 1) {
+        moodImage = PENGUIN_IMAGES.love;
+      }
+
+      // One submission → Chilling during daytime
+      else if (currentHour >= 5 && currentHour < 20) {
+        moodImage = PENGUIN_IMAGES.chilling;
+      }
+
+      // One submission → Sleeping at night
+      else {
+        moodImage = PENGUIN_IMAGES.sleepingWithStreak;
+      }
+
+    } else {
+
+      // No submission today → Time-based mood
+      if (currentHour >= 5 && currentHour < 8) {
+        moodImage = PENGUIN_IMAGES.neutral;
+      } else if (currentHour >= 8 && currentHour < 12) {
+        moodImage = PENGUIN_IMAGES.sad;
+      } else if (currentHour >= 12 && currentHour < 16) {
+        moodImage = PENGUIN_IMAGES.cry;
+      } else if (currentHour >= 16 && currentHour < 20) {
+        moodImage = PENGUIN_IMAGES.angry;
       } else {
-        break;
+        moodImage = PENGUIN_IMAGES['more angry'];
       }
     }
-    return streak;
-  }, [dailyData]);
 
-  const currentStreak = calculateStreak();
+    setCurrentPenguinImage(moodImage);
+  };
+
+  updatePenguinMood();
+
+  const intervalId = setInterval(updatePenguinMood, 60 * 1000);
+
+  return () => clearInterval(intervalId);
+}, [stats, PENGUIN_IMAGES]);
+
+
+useEffect(() => {
+  const updateTimer = () => {
+    const now = new Date();
+
+    const nextReset = new Date(now);
+
+    nextReset.setHours(5, 0, 0, 0);
+
+    // If it is already 5 AM or later,
+    // the next reset is tomorrow at 5 AM.
+    if (now >= nextReset) {
+      nextReset.setDate(nextReset.getDate() + 1);
+    }
+
+    const difference = nextReset.getTime() - now.getTime();
+
+    const hours = Math.floor(difference / (1000 * 60 * 60));
+    const minutes = Math.floor(
+      (difference % (1000 * 60 * 60)) / (1000 * 60)
+    );
+    const seconds = Math.floor(
+      (difference % (1000 * 60)) / 1000
+    );
+
+    setStreakTimeLeft(
+      `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    );
+  };
+
+  updateTimer();
+
+  const timerId = setInterval(updateTimer, 1000);
+
+  return () => clearInterval(timerId);
+}, []);
+
+
+  const handleSaveUsername = () => {
+  console.log(`handleSaveUsername: Attempting to save username: ${leetcodeUsername.trim()}`);
+
+  if (leetcodeUsername.trim()) {
+    const newUsername = leetcodeUsername.trim();
+
+    localStorage.setItem(LEETCODE_USERNAME_KEY, newUsername);
+
+    fetchLeetCodeStats(newUsername, false);
+
+    console.log('handleSaveUsername: Username saved and fetch initiated.');
+  } else {
+    setError('Username cannot be empty.');
+    setShowInput(true);
+    console.log('handleSaveUsername: Username is empty.');
+  }
+};
+
+
+const calculateStreak = useCallback(() => {
+  if (!stats?.submissionCalendar) {
+    return { count: 0, atRisk: false };
+  }
+
+  const submissionDates = new Set(
+    Object.entries(stats.submissionCalendar)
+      .filter(([, count]) => count > 0)
+      .map(([timestamp]) =>
+        format(new Date(Number(timestamp) * 1000), 'yyyy-MM-dd')
+      )
+  );
+
+  const effectiveToday = getEffectiveDate(new Date());
+  const todayStr = format(effectiveToday, 'yyyy-MM-dd');
+
+  // User has already submitted today
+  if (submissionDates.has(todayStr)) {
+    let streak = 0;
+    let currentDate = effectiveToday;
+
+    while (submissionDates.has(format(currentDate, 'yyyy-MM-dd'))) {
+      streak++;
+      currentDate = addDays(currentDate, -1);
+    }
+
+    return { count: streak, atRisk: false };
+  }
+
+  // User hasn't submitted today.
+  // Check whether the previous effective day was completed.
+  const yesterday = addDays(effectiveToday, -1);
+  const yesterdayStr = format(yesterday, 'yyyy-MM-dd');
+
+  if (!submissionDates.has(yesterdayStr)) {
+    return { count: 0, atRisk: false };
+  }
+
+  // Calculate the streak ending yesterday.
+  let streak = 0;
+  let currentDate = yesterday;
+
+  while (submissionDates.has(format(currentDate, 'yyyy-MM-dd'))) {
+    streak++;
+    currentDate = addDays(currentDate, -1);
+  }
+
+  return { count: streak, atRisk: true };
+}, [stats]);
+
+const streakInfo = calculateStreak();
+
+const currentStreak = streakInfo.count;
+const isStreakAtRisk = streakInfo.atRisk;
 
   const daysOfWeek = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 });
 
   const getDayStatus = useCallback((dayIndex: number) => {
-    const day = addDays(startOfCurrentWeek, dayIndex);
-    const dayStr = format(day, 'yyyy-MM-dd');
-    const dataForDay = dailyData.find(d => d.date === dayStr);
+  const day = addDays(startOfCurrentWeek, dayIndex);
+  const dayStr = format(day, 'yyyy-MM-dd');
 
-    const now = new Date();
-    const effectiveToday = getEffectiveDate(now);
-    const effectiveTodayStr = format(effectiveToday, 'yyyy-MM-dd');
+  const submissionDates = new Set(
+    Object.entries(stats?.submissionCalendar || {})
+      .filter(([, count]) => count > 0)
+      .map(([timestamp]) =>
+        format(new Date(Number(timestamp) * 1000), 'yyyy-MM-dd')
+      )
+  );
 
-    if (dataForDay?.isStreakDay) {
-      return 'completed';
-    }
+  const now = new Date();
+  const effectiveToday = getEffectiveDate(now);
+  const effectiveTodayStr = format(effectiveToday, 'yyyy-MM-dd');
 
-    // Highlight the effective 'today' (which could be yesterday if before 5 AM)
-    if (dayStr === effectiveTodayStr) {
-      return 'today-not-completed';
-    }
+  if (submissionDates.has(dayStr)) {
+    return 'completed';
+  }
 
-    if (parseISO(dayStr) < effectiveToday) {
-      return 'past-not-completed';
-    }
+  if (dayStr === effectiveTodayStr) {
+    return 'today-not-completed';
+  }
 
-    return 'not-completed';
-  }, [dailyData, startOfCurrentWeek]);
+  if (parseISO(dayStr) < effectiveToday) {
+    return 'past-not-completed';
+  }
+
+  return 'not-completed';
+}, [stats, startOfCurrentWeek]);
 
   // Count how many buttons are visible to determine when to show labels
   const visibleButtonCount = [showContest, showStudyPlan, showDaily, showSheet].filter(Boolean).length;
   const shouldShowLabels = visibleButtonCount <= 2;
 
-  const handleDailyProblemClick = async () => {
-    try {
-      const response = await fetch('https://alfa-leetcode-api.onrender.com/daily');
-      const data = await response.json();
-      if (data && data.questionLink) {
-        window.open(data.questionLink, '_blank');
-      } else {
-        alert('Could not fetch daily problem link.');
+const handleDailyProblemClick = async () => {
+  try {
+    const response = await fetch(
+      'https://alfa-leetcode-api.onrender.com/daily'
+    );
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        alert('Daily problem API is temporarily rate limited. Please try again shortly.');
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching daily problem:', err);
-      alert('Failed to fetch daily problem. Please try again later.');
+
+      throw new Error(`HTTP error: ${response.status}`);
     }
-  };
+
+    const data = await response.json();
+
+    if (data?.questionLink) {
+      window.open(data.questionLink, '_blank');
+    } else {
+      alert('Could not fetch daily problem link.');
+    }
+  } catch (err) {
+    console.error('Error fetching daily problem:', err);
+    alert('Failed to fetch daily problem. Please try again later.');
+  }
+};
 
   const handleDsaSheetUrlSave = () => {
     if (dsaSheetUrl.trim()) {
@@ -577,9 +596,6 @@ const LeetCodeWidget: React.FC = () => {
         <p className="text-lg mb-4">Error: {error}</p>
         <button
           onClick={() => {
-            // Reset baseline when trying again with potentially new username
-            localStorage.removeItem(LEETCODE_BASELINE_SOLVED_KEY);
-            localStorage.removeItem(LEETCODE_FIRST_ENTRY_KEY);
             setShowInput(true);
           }}
           className="bg-[#c30052] hover:bg-[#d40058] text-white px-6 py-3 rounded-full font-medium transition-colors mt-4"
@@ -598,10 +614,12 @@ const LeetCodeWidget: React.FC = () => {
         <div className="flex flex-col md:flex-row gap-1 mb-2">
           {/* Left side - Streak Card */}
           <div className="w-[35%] h-[140px] flex-shrink-0">
-            <StreakCard 
-              streakCount={currentStreak} 
+            <StreakCard
+              streakCount={currentStreak}
               penguinImg={currentPenguinImage}
               username={leetcodeUsername}
+              isStreakAtRisk={isStreakAtRisk}
+              streakTimeLeft={streakTimeLeft}
             />
           </div>
 
@@ -810,9 +828,6 @@ const LeetCodeWidget: React.FC = () => {
               <button 
                 onClick={() => { 
                   setShowSettingsMenu(false);
-                  // Reset baseline to avoid streak calculation issues with new username
-                  localStorage.removeItem(LEETCODE_BASELINE_SOLVED_KEY);
-                  localStorage.removeItem(LEETCODE_FIRST_ENTRY_KEY);
                   setShowInput(true); 
                 }}
                 className="flex items-center gap-2 text-sm text-left text-white/80 hover:text-white hover:bg-zinc-800 p-2 rounded transition-colors"
@@ -882,9 +897,6 @@ const LeetCodeWidget: React.FC = () => {
           <p>No LeetCode stats to display. Please ensure your username is correct or enter one above.</p>
           <button
             onClick={() => {
-              // Reset baseline data when entering new username from fallback state
-              localStorage.removeItem(LEETCODE_BASELINE_SOLVED_KEY);
-              localStorage.removeItem(LEETCODE_FIRST_ENTRY_KEY);
               setShowInput(true);
             }}
             className="bg-[#ff4101] text-white px-4 py-2 rounded-lg font-medium hover:bg-opacity-90 transition-colors mt-4"
